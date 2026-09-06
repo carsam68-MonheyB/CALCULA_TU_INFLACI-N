@@ -1,0 +1,13 @@
+# Datos crudos de QQP (son cientos de MB, no van al repo)
+*.csv
+!ejemplos/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
