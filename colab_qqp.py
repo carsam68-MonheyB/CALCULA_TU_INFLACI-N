@@ -26,7 +26,7 @@ import sys
 
 import pandas as pd
 
-VERSION = "2026-09-08"
+VERSION = "2026-09-08.b"
 
 RAIZ_DRIVE = "/content/drive/MyDrive"
 TEMPORAL = "_pieza"
@@ -152,7 +152,7 @@ def anios_en_datos(df):
     no depende de como se llamen los archivos."""
     if "fecha" not in df.columns:
         return {}
-    fechas = pd.to_datetime(df["fecha"], errors="coerce").dropna()
+    fechas = _ipm().parsear_fechas(df["fecha"]).dropna()
     return {} if fechas.empty else fechas.dt.year.value_counts().to_dict()
 
 

@@ -151,6 +151,21 @@ def opciones_lectura(ruta, encoding):
     return {"sep": sep, "header": None, "names": nombres}
 
 
+def parsear_fechas(serie):
+    """Convierte la columna de fecha a fechas reales.
+
+    QQP no usa el mismo formato en todos los anios: unos traen 2015-01-02
+    (ano-mes-dia) y otros 02/01/2025, que es dia/mes/ano. Leer el segundo con
+    el criterio del primero convierte el 2 de enero en 1 de febrero, y el
+    filtro por mes se queda con los registros equivocados sin avisar.
+    """
+    texto = serie.astype("string").str.strip()
+    muestra = texto.dropna().head(200)
+    if len(muestra) and muestra.str.match(r"\d{1,2}/\d{1,2}/\d{4}").mean() > 0.8:
+        return pd.to_datetime(texto, format="%d/%m/%Y", errors="coerce")
+    return pd.to_datetime(texto, errors="coerce")
+
+
 def primeras_lineas(ruta, cuantas=3):
     """Devuelve las primeras lineas crudas, para diagnosticar el formato."""
     for enc in ("utf-8", "latin-1", "cp1252"):
@@ -322,7 +337,7 @@ def filtrar(df, args):
     if getattr(args, "mes", None):
         if "fecha" not in df.columns:
             sys.exit("Pediste --mes pero el CSV no trae columna de fecha.")
-        fechas = pd.to_datetime(df["fecha"], errors="coerce")
+        fechas = parsear_fechas(df["fecha"])
         df = df[fechas.dt.month == args.mes]
     return df
 
