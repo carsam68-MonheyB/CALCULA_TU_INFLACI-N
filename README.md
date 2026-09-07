@@ -80,6 +80,61 @@ python inflacion_por_marca.py \
     --producto DESODORANTE
 ```
 
+### El tamaño importa
+
+**Un año de QQP ocupa cerca de 5 GB descomprimido**, repartido en decenas de
+piezas de unos 100 MB. Descomprimir dos años no cabe en el disco de Google Colab.
+
+Por eso el cuaderno **no descomprime el año**: saca una pieza, se queda solo con
+las filas que pediste, la borra y pasa a la siguiente. El disco nunca tiene más
+de un archivo a la vez.
+
+Si trabajas en tu propia computadora y tienes espacio, puedes descomprimir
+normalmente y usar el script directo.
+
+## Uso sin instalar nada (recomendado)
+
+Si no usas Python, abre el cuaderno en Google Colab: corre en el navegador y no
+hay que instalar nada.
+
+Sube los `.rar` **sin descomprimir** a una carpeta `QQP` en tu Google Drive; el
+cuaderno los descomprime por ti. Subir el `.rar` (unos 100 MB con el año
+completo) es mucho más rápido que subir los CSV extraídos.
+
+[![Abrir en Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/carsam68-MonheyB/CALCULA_TU_INFLACI-N/blob/main/Calcula_tu_inflacion_COLAB.ipynb)
+
+## Instalación local (si prefieres tu computadora)
+
+```bash
+pip install -r requirements.txt
+```
+
+Requiere Python 3.8 o superior.
+
+## De dónde bajar los datos
+
+En [datos.gob.mx](https://datos.gob.mx) busca **"Programa Quien es quien en los precios"**.
+Los datos vienen comprimidos, normalmente un archivo por año (`QQP_2025.rar`).
+
+Adentro de cada `.rar` vienen los CSV **por mes, y cada mes partido en varias
+piezas**, con el formato `MM-AAAA_pieza.csv`:
+
+```
+01-2024_01.csv     enero 2024, parte 1
+01-2024_02.csv     enero 2024, parte 2
+```
+
+Para comparar dos periodos necesitas **todas las piezas de un mes de cada año**,
+usando el **mismo mes** en ambos para no mezclar efectos de temporada. El comodín
+`*` junta las piezas automáticamente:
+
+```bash
+python inflacion_por_marca.py \
+    --base   "datos/01-2024_*.csv" \
+    --actual "datos/01-2025_*.csv" \
+    --producto DESODORANTE
+```
+
 ### Preparar los archivos
 
 1. **Descomprime** cada `.rar` con WinRAR o 7-Zip. Adentro vienen los CSV mensuales.

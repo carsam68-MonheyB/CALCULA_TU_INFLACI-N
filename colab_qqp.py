@@ -16,7 +16,9 @@ import subprocess
 import sys
 from collections import Counter
 
-VERSION = "2026-09-07.5"
+import pandas as pd
+
+VERSION = "2026-09-07.6"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -338,6 +340,150 @@ def calcular(patron_base, patron_actual, producto="", marca="", categoria="",
     else:
         print("AVISO: sin mes se mezclan todos los meses del anio y el\n"
               "       resultado no sirve. Pon un mes en el Paso 6.\n")
+    if por_cadena:
+        cmd.append("--por-cadena")
+
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    print(proc.stdout)
+    if proc.returncode != 0:
+        print("--- detalle del error ---")
+        print(proc.stderr[-3000:])
+    return proc.returncode == 0
+
+
+# --------------------------------------------------------------------------
+# Procesar sin descomprimir el anio completo
+# --------------------------------------------------------------------------
+#
+# Un anio de QQP ocupa cerca de 5 GB descomprimido, repartido en decenas de
+# piezas de unos 100 MB. Descomprimir dos anios llena el disco de Colab y la
+# extraccion se queda a medias. Aqui se saca una pieza, se filtra, se guarda
+# lo poco que sobrevive y se borra la pieza antes de pasar a la siguiente:
+# el disco nunca tiene mas de un archivo a la vez.
+
+TEMPORAL = "_pieza"
+
+
+def _piezas_de(ruta_comprimido):
+    r = subprocess.run(["lsar", ruta_comprimido], capture_output=True, text=True)
+    if r.returncode != 0:
+        return []
+    return [l.strip() for l in r.stdout.splitlines()[1:]
+            if l.strip().lower().endswith(".csv")]
+
+
+def _filtrar_pieza(ruta_csv, mes, filtros, tam_bloque=400_000):
+    """Lee una pieza por bloques y devuelve solo las filas que interesan."""
+    import inflacion_por_marca as ipm
+
+    class Args:
+        pass
+    args = Args()
+    for k in ("producto", "marca", "categoria", "estado", "cadena"):
+        valor = filtros.get(k, "")
+        setattr(args, k, valor.split() if valor and valor.strip() else None)
+    args.mes = mes or None
+
+    trozos = []
+    for enc in ("utf-8", "latin-1", "cp1252"):
+        try:
+            trozos = []
+            for bloque in pd.read_csv(ruta_csv, encoding=enc, low_memory=False,
+                                      on_bad_lines="skip", chunksize=tam_bloque):
+                bloque = ipm.normalizar(bloque)
+                bloque = ipm.filtrar(bloque, args)
+                if not bloque.empty:
+                    trozos.append(bloque)
+            break
+        except UnicodeDecodeError:
+            continue
+    return pd.concat(trozos, ignore_index=True) if trozos else pd.DataFrame()
+
+
+def cosechar(carpeta, comprimido, mes, filtros, guardar_en):
+    """Recorre las piezas de un comprimido y guarda solo las filas filtradas.
+
+    Devuelve la ruta del CSV chico resultante, o None si no sobrevivio nada.
+    """
+    origen = os.path.join(carpeta, comprimido)
+    if not os.path.exists(origen):
+        print(f"NO ENCONTRADO: {comprimido}")
+        return None
+
+    piezas = _piezas_de(origen)
+    if not piezas:
+        print(f"No pude leer el contenido de {comprimido}")
+        return None
+
+    print(f"{comprimido}: {len(piezas)} piezas")
+    reunido, filas = [], 0
+
+    for i, pieza in enumerate(piezas, 1):
+        shutil.rmtree(TEMPORAL, ignore_errors=True)
+        r = subprocess.run(["unar", "-q", "-f", "-o", TEMPORAL, origen, pieza],
+                           capture_output=True, text=True)
+        sacados = []
+        for raiz, _, archivos in os.walk(TEMPORAL):
+            sacados += [os.path.join(raiz, a) for a in archivos
+                        if a.lower().endswith(".csv")]
+        if r.returncode != 0 or not sacados:
+            print(f"\r  pieza {i}/{len(piezas)}: no se pudo extraer      ")
+            continue
+
+        try:
+            chico = _filtrar_pieza(sacados[0], mes, filtros)
+        except Exception as e:                      # una pieza corrupta no
+            print(f"\r  pieza {i}/{len(piezas)}: error ({e})      ")  # detiene todo
+            chico = None
+        finally:
+            shutil.rmtree(TEMPORAL, ignore_errors=True)
+
+        if chico is not None and not chico.empty:
+            reunido.append(chico)
+            filas += len(chico)
+        print(f"\r  pieza {i}/{len(piezas)}   filas utiles: {filas:,}",
+              end="", flush=True)
+
+    print()
+    if not reunido:
+        print("  no sobrevivio ninguna fila con esos filtros")
+        return None
+
+    pd.concat(reunido, ignore_index=True).to_csv(guardar_en, index=False,
+                                                 encoding="utf-8")
+    tam = os.path.getsize(guardar_en) / 1e6
+    print(f"  guardado: {guardar_en}  ({filas:,} filas, {tam:,.1f} MB)")
+    return guardar_en
+
+
+def analizar(carpeta, comprimido_base, comprimido_actual, mes, filtros,
+             por_cadena=True, min_obs=3, salida="resultado.csv"):
+    """Cosecha los dos anios y corre el analisis. Es todo el flujo en uno."""
+    if not mes:
+        print("FALTA EL MES: sin el se mezclan los doce meses del anio y el\n"
+              "resultado no significa nada.")
+        return False
+    if not any(v.strip() for v in filtros.values() if v):
+        print("FALTA UN FILTRO: pon al menos un producto o una categoria.")
+        return False
+
+    meses = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    print(f"Buscando {meses[mes]} en cada anio. Esto tarda varios minutos.\n")
+
+    base = cosechar(carpeta, comprimido_base, mes, filtros, "_base.csv")
+    if not base:
+        print("\nNo se pudo preparar el periodo BASE.")
+        return False
+    actual = cosechar(carpeta, comprimido_actual, mes, filtros, "_actual.csv")
+    if not actual:
+        print("\nNo se pudo preparar el periodo ACTUAL.")
+        return False
+
+    print()
+    cmd = [sys.executable, "inflacion_por_marca.py",
+           "--base", base, "--actual", actual,
+           "--min-obs", str(min_obs), "--csv", salida]
     if por_cadena:
         cmd.append("--por-cadena")
 
