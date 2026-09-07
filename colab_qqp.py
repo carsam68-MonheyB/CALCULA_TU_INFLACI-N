@@ -16,7 +16,7 @@ import subprocess
 import sys
 from collections import Counter
 
-VERSION = "2026-09-07.2"
+VERSION = "2026-09-07.3"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -115,8 +115,21 @@ def _sugerir_patrones(cuenta):
     print("\nCopia dos de estos patrones al Paso 5, y elige el mes en el Paso 6.")
 
 
+def _anios_de(nombres):
+    c = Counter()
+    for f in nombres:
+        for a in re.findall(r"(19|20)(\d{2})", f):
+            c["".join(a)] += 1
+            break
+    return c
+
+
 def extraer(carpeta, comprimidos):
-    """Extrae los comprimidos indicados y deja todos los CSV en datos/."""
+    """Extrae los comprimidos indicados y deja todos los CSV en datos/.
+
+    Reporta que anios aporto cada comprimido, porque el nombre del archivo no
+    garantiza su contenido: conviene verlo antes de elegir los periodos.
+    """
     os.makedirs(DATOS, exist_ok=True)
 
     for nombre in [n.strip() for n in comprimidos.split(",") if n.strip()]:
@@ -124,15 +137,31 @@ def extraer(carpeta, comprimidos):
         if not os.path.exists(origen):
             print(f"NO ENCONTRADO: {nombre}")
             continue
+
+        antes = set(os.listdir(DATOS))
         print(f"Extrayendo {nombre} ... (puede tardar varios minutos)")
         r = subprocess.run(["unar", "-q", "-f", "-D", "-o", DATOS, origen],
                            capture_output=True, text=True)
-        print("  ok" if r.returncode == 0
-              else f"  fallo: {(r.stderr or r.stdout)[:300]}")
+        if r.returncode != 0:
+            print(f"  FALLO: {(r.stderr or r.stdout)[:300]}")
+            continue
 
-    movidos = _aplanar()
-    if movidos:
-        print(f"\n{movidos} archivos sacados de sus subcarpetas")
+        _aplanar()
+        nuevos = [f for f in os.listdir(DATOS)
+                  if f not in antes and f.lower().endswith(".csv")]
+        anios = _anios_de(nuevos)
+        if anios:
+            detalle = ", ".join(f"{a} ({anios[a]} archivos)" for a in sorted(anios))
+            print(f"  ok -> aporto: {detalle}")
+            if not any(a in nombre for a in anios):
+                print(f"  OJO: el archivo se llama '{nombre}' pero su contenido")
+                print(f"       es de otro anio. Usa el anio real al elegir el periodo.")
+        elif nuevos:
+            print(f"  ok -> {len(nuevos)} archivos, sin anio legible en el nombre:")
+            for f in sorted(nuevos)[:5]:
+                print(f"        {f}")
+        else:
+            print("  ok, pero no agrego ningun archivo nuevo (ya estaban).")
 
     for f in glob.glob(os.path.join(carpeta, "*.csv")):
         destino = os.path.join(DATOS, os.path.basename(f))
@@ -140,7 +169,7 @@ def extraer(carpeta, comprimidos):
             shutil.copy(f, destino)
 
     csvs = sorted(f for f in os.listdir(DATOS) if f.lower().endswith(".csv"))
-    print(f"\n{len(csvs)} archivos CSV listos.")
+    print(f"\n{len(csvs)} archivos CSV en total.")
 
     cuenta = anios_disponibles()
     if cuenta:
@@ -150,7 +179,7 @@ def extraer(carpeta, comprimidos):
         for f in csvs[:20]:
             print("  ", f)
     else:
-        print("No quedo ningun CSV. Revisa si la extraccion dijo 'fallo'.")
+        print("No quedo ningun CSV. Revisa si la extraccion dijo 'FALLO'.")
     return csvs
 
 
@@ -213,15 +242,24 @@ def revisar(patron_base, patron_actual):
 
     if ok:
         print("Listo, pasa al Paso 6.")
-    else:
-        _diagnostico()
-    return ok
+        return True
+    _diagnostico()
+    raise SystemExit(
+        "\nDETENIDO en el Paso 5: los patrones no encuentran archivos.\n"
+        "Corrige el patron arriba con alguno de los sugeridos y vuelve a "
+        "ejecutar este paso.")
 
 
 def calcular(patron_base, patron_actual, producto="", marca="", categoria="",
              estado="", cadena="", mes=0, por_cadena=True, min_obs=3,
              salida="resultado.csv"):
     """Corre el analisis y muestra el reporte."""
+    for etiqueta, patron in (("BASE", patron_base), ("ACTUAL", patron_actual)):
+        if not glob.glob(os.path.join(DATOS, patron)):
+            print(f"El patron {etiqueta} ({patron}) no encuentra ningun archivo.\n")
+            _diagnostico()
+            return False
+
     cmd = [sys.executable, "inflacion_por_marca.py",
            "--base", os.path.join(DATOS, patron_base),
            "--actual", os.path.join(DATOS, patron_actual),
