@@ -18,7 +18,7 @@ from collections import Counter
 
 import pandas as pd
 
-VERSION = "2026-09-07.9"
+VERSION = "2026-09-07.10"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -617,3 +617,35 @@ def inventario(carpeta):
         print("\nOJO: solo hay un anio disponible. Se necesitan dos para")
         print("     medir inflacion. Revisa la descarga de los demas archivos.")
     return mapa
+
+
+def lista_cruda(carpeta, comprimido, cuantas=12):
+    """Imprime la salida de lsar tal cual, sin interpretarla.
+
+    Cuando el resumen del inventario no cuadra con lo que se ve al abrir el
+    archivo en Windows, hay que distinguir si el contenido es distinto o si
+    mi lectura de la lista esta mal. Esto muestra el dato sin procesar.
+    """
+    ruta = os.path.join(carpeta, comprimido)
+    print(f"archivo: {ruta}")
+    if not os.path.exists(ruta):
+        print("NO EXISTE")
+        return
+    print(f"tamano: {os.path.getsize(ruta)/1e6:,.1f} MB\n")
+
+    r = subprocess.run(["lsar", ruta], capture_output=True, text=True)
+    print(f"lsar termino con codigo {r.returncode}\n")
+    lineas = r.stdout.splitlines()
+    print(f"SALIDA CRUDA ({len(lineas)} lineas, muestro las primeras {cuantas}):")
+    print("-" * 70)
+    for l in lineas[:cuantas]:
+        print(repr(l))
+    print("-" * 70)
+    if r.stderr.strip():
+        print("\nmensajes de error:")
+        print(r.stderr[:500])
+
+    piezas = _piezas_de(ruta)
+    print(f"\npiezas .csv que reconoci: {len(piezas)}")
+    for x in piezas[:5]:
+        print(f"    {x!r}   -> anio leido: {anio_de(x)}")
