@@ -95,6 +95,37 @@ class ColumnasFaltantes(Exception):
     """El CSV no trae las columnas minimas de QQP."""
 
 
+SEPARADORES = [",", "|", ";", "\t"]
+
+
+def detectar_separador(ruta, encoding):
+    """Adivina el separador contando cual aparece mas en el encabezado.
+
+    Los CSV de QQP no siempre usan coma; con el separador equivocado pandas
+    devuelve una sola columna con toda la linea adentro y despues parece que
+    al archivo le faltan columnas.
+    """
+    try:
+        with open(ruta, encoding=encoding, errors="replace") as f:
+            linea = f.readline()
+    except OSError:
+        return ","
+    cuentas = {sep: linea.count(sep) for sep in SEPARADORES}
+    mejor = max(cuentas, key=cuentas.get)
+    return mejor if cuentas[mejor] >= 3 else ","
+
+
+def primeras_lineas(ruta, cuantas=3):
+    """Devuelve las primeras lineas crudas, para diagnosticar el formato."""
+    for enc in ("utf-8", "latin-1", "cp1252"):
+        try:
+            with open(ruta, encoding=enc) as f:
+                return [next(f).rstrip("\n") for _ in range(cuantas)], enc
+        except (UnicodeDecodeError, StopIteration):
+            continue
+    return [], None
+
+
 # Filas por bloque. Un CSV anual de QQP puede traer 20+ millones de filas;
 # leerlo entero ocupa unas 5 veces su tamano en RAM y tumba la maquina.
 # Leyendo por bloques y filtrando cada bloque solo se guarda lo que interesa.
@@ -122,8 +153,10 @@ def leer_csv(patron, args=None):
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 piezas, filas, guardadas = [], 0, 0
-                lector = pd.read_csv(ruta, encoding=enc, low_memory=False,
-                                     on_bad_lines="skip", chunksize=TAM_BLOQUE)
+                sep = detectar_separador(ruta, enc)
+                lector = pd.read_csv(ruta, encoding=enc, sep=sep,
+                                     low_memory=False, on_bad_lines="skip",
+                                     chunksize=TAM_BLOQUE)
                 for bloque in lector:
                     filas += len(bloque)
                     bloque = normalizar(bloque)
@@ -173,8 +206,8 @@ def normalizar(df):
     faltan = {"producto", "marca", "precio"} - set(df.columns)
     if faltan:
         raise ColumnasFaltantes(
-            f"Al CSV le faltan columnas indispensables: {faltan}\n"
-            f"Columnas encontradas: {list(df.columns)[:15]}")
+            f"faltan {sorted(faltan)}; el archivo trae "
+            f"{list(df.columns)[:8]}")
 
     for col in ("producto", "marca", "presentacion", "cadena",
                 "estado", "municipio", "categoria"):

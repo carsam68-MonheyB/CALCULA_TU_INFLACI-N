@@ -18,7 +18,7 @@ from collections import Counter
 
 import pandas as pd
 
-VERSION = "2026-09-07.6"
+VERSION = "2026-09-07.7"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -388,8 +388,10 @@ def _filtrar_pieza(ruta_csv, mes, filtros, tam_bloque=400_000):
     for enc in ("utf-8", "latin-1", "cp1252"):
         try:
             trozos = []
-            for bloque in pd.read_csv(ruta_csv, encoding=enc, low_memory=False,
-                                      on_bad_lines="skip", chunksize=tam_bloque):
+            sep = ipm.detectar_separador(ruta_csv, enc)
+            for bloque in pd.read_csv(ruta_csv, encoding=enc, sep=sep,
+                                      low_memory=False, on_bad_lines="skip",
+                                      chunksize=tam_bloque):
                 bloque = ipm.normalizar(bloque)
                 bloque = ipm.filtrar(bloque, args)
                 if not bloque.empty:
@@ -493,3 +495,59 @@ def analizar(carpeta, comprimido_base, comprimido_actual, mes, filtros,
         print("--- detalle del error ---")
         print(proc.stderr[-3000:])
     return proc.returncode == 0
+
+
+def ver_una_pieza(carpeta, comprimido, cual=1):
+    """Extrae UNA pieza y muestra sus primeras lineas tal como vienen.
+
+    Sirve para ver el formato real del archivo (separador, encabezado) cuando
+    la lectura falla.
+    """
+    import inflacion_por_marca as ipm
+
+    origen = os.path.join(carpeta, comprimido)
+    if not os.path.exists(origen):
+        print(f"NO ENCONTRADO: {comprimido}")
+        return
+
+    piezas = _piezas_de(origen)
+    if not piezas:
+        print("No pude leer el contenido del comprimido.")
+        return
+
+    pieza = piezas[min(cual, len(piezas)) - 1]
+    print(f"Sacando {pieza} de {comprimido} ...\n")
+    shutil.rmtree(TEMPORAL, ignore_errors=True)
+    r = subprocess.run(["unar", "-q", "-f", "-o", TEMPORAL, origen, pieza],
+                       capture_output=True, text=True)
+    sacados = []
+    for raiz, _, archivos in os.walk(TEMPORAL):
+        sacados += [os.path.join(raiz, a) for a in archivos
+                    if a.lower().endswith(".csv")]
+    if r.returncode != 0 or not sacados:
+        print("No se pudo extraer:", (r.stderr or r.stdout)[:300])
+        shutil.rmtree(TEMPORAL, ignore_errors=True)
+        return
+
+    ruta = sacados[0]
+    print(f"tamano: {os.path.getsize(ruta)/1e6:,.0f} MB\n")
+    lineas, enc = ipm.primeras_lineas(ruta, 3)
+    print(f"codificacion que funciono: {enc}")
+    if enc:
+        print(f"separador detectado: {ipm.detectar_separador(ruta, enc)!r}\n")
+    print("PRIMERAS LINEAS TAL COMO VIENEN:")
+    print("-" * 70)
+    for i, l in enumerate(lineas, 1):
+        print(f"{i}| {l[:300]}")
+    print("-" * 70)
+
+    try:
+        df = pd.read_csv(ruta, nrows=3, encoding=enc,
+                         sep=ipm.detectar_separador(ruta, enc))
+        print("\nColumnas que leyo pandas:")
+        for c in list(df.columns)[:20]:
+            print("   ", c)
+    except Exception as e:
+        print("\npandas no pudo leerlo:", e)
+    finally:
+        shutil.rmtree(TEMPORAL, ignore_errors=True)
