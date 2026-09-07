@@ -16,7 +16,7 @@ import subprocess
 import sys
 from collections import Counter
 
-VERSION = "2026-09-07.3"
+VERSION = "2026-09-07.4"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -124,12 +124,23 @@ def _anios_de(nombres):
     return c
 
 
-def extraer(carpeta, comprimidos):
+def limpiar():
+    """Vacia datos/. Util cuando quedaron archivos de corridas anteriores que
+    ya no corresponden a los anios que se quieren comparar."""
+    if os.path.isdir(DATOS):
+        shutil.rmtree(DATOS)
+    os.makedirs(DATOS, exist_ok=True)
+    print("Carpeta datos/ vaciada.\n")
+
+
+def extraer(carpeta, comprimidos, limpiar_antes=False):
     """Extrae los comprimidos indicados y deja todos los CSV en datos/.
 
     Reporta que anios aporto cada comprimido, porque el nombre del archivo no
     garantiza su contenido: conviene verlo antes de elegir los periodos.
     """
+    if limpiar_antes:
+        limpiar()
     os.makedirs(DATOS, exist_ok=True)
 
     for nombre in [n.strip() for n in comprimidos.split(",") if n.strip()]:
