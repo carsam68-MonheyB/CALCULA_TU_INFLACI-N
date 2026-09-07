@@ -19,8 +19,12 @@ puede cruzar dos periodos y ver qué subió de verdad — y, sobre todo, detecta
 
 ## Uso sin instalar nada (recomendado)
 
-Si no usas Python, abre el cuaderno en Google Colab: corre en el navegador, subes
-tus CSV y le das ejecutar. No hay que instalar nada.
+Si no usas Python, abre el cuaderno en Google Colab: corre en el navegador y no
+hay que instalar nada.
+
+Sube los `.rar` **sin descomprimir** a una carpeta `QQP` en tu Google Drive; el
+cuaderno los descomprime por ti. Subir el `.rar` (unos 100 MB con el año
+completo) es mucho más rápido que subir los CSV extraídos.
 
 [![Abrir en Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/carsam68-MonheyB/CALCULA_TU_INFLACI-N/blob/main/Calcula_tu_inflacion_COLAB.ipynb)
 
