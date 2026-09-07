@@ -16,7 +16,7 @@ import subprocess
 import sys
 from collections import Counter
 
-VERSION = "2026-09-07.1"
+VERSION = "2026-09-07.2"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -88,20 +88,31 @@ def _aplanar():
     return movidos
 
 
-def periodos_disponibles():
-    """Cuenta las piezas que hay de cada mes-anio en datos/."""
+def anios_disponibles():
+    """Cuenta cuantos archivos hay de cada anio.
+
+    QQP no nombra igual todos los anios: unos traen "01-2024_01.csv" (mes,
+    anio, pieza) y otros "012015.csv" (pieza y anio, sin mes). Lo unico
+    confiable en el nombre es el anio de cuatro digitos; el mes se filtra
+    despues leyendo la fecha de cada registro.
+    """
     cuenta = Counter()
-    for f in os.listdir(DATOS) if os.path.isdir(DATOS) else []:
+    if not os.path.isdir(DATOS):
+        return cuenta
+    for f in os.listdir(DATOS):
         if not f.lower().endswith(".csv"):
             continue
-        m = re.match(r"(\d{2})-(\d{4})", f)
-        if m:
-            cuenta[f"{m.group(1)}-{m.group(2)}"] += 1
+        for anio in re.findall(r"(19|20)(\d{2})", f):
+            cuenta["".join(anio)] += 1
+            break
     return cuenta
 
 
-def _ordena_periodos(cuenta):
-    return sorted(cuenta, key=lambda x: (x[3:], x[:2]))
+def _sugerir_patrones(cuenta):
+    print("\nAnios disponibles (patron y cuantos archivos tiene cada uno):")
+    for anio in sorted(cuenta):
+        print(f"   *{anio}*.csv     {cuenta[anio]} archivos")
+    print("\nCopia dos de estos patrones al Paso 5, y elige el mes en el Paso 6.")
 
 
 def extraer(carpeta, comprimidos):
@@ -131,14 +142,11 @@ def extraer(carpeta, comprimidos):
     csvs = sorted(f for f in os.listdir(DATOS) if f.lower().endswith(".csv"))
     print(f"\n{len(csvs)} archivos CSV listos.")
 
-    cuenta = periodos_disponibles()
+    cuenta = anios_disponibles()
     if cuenta:
-        print("\nPeriodos disponibles (mes-anio, y piezas de cada uno):")
-        for per in _ordena_periodos(cuenta):
-            print(f"   {per}_*.csv     {cuenta[per]} piezas")
-        print("\nCopia dos de estos patrones al Paso 5.")
+        _sugerir_patrones(cuenta)
     elif csvs:
-        print("\nLos nombres no tienen el formato MM-AAAA que esperaba:")
+        print("\nNo pude leer el anio de estos nombres:")
         for f in csvs[:20]:
             print("  ", f)
     else:
@@ -180,13 +188,11 @@ def _diagnostico():
             print("   ", f)
         if len(csvs) > 25:
             print(f"    ... y {len(csvs)-25} mas")
-        cuenta = periodos_disponibles()
+        cuenta = anios_disponibles()
         if cuenta:
-            print("\nPatrones que SI funcionan (copia dos de estos arriba):")
-            for per in _ordena_periodos(cuenta):
-                print(f"   {per}_*.csv")
+            _sugerir_patrones(cuenta)
         else:
-            print("\nLos nombres no tienen el formato MM-AAAA que esperaba.")
+            print("\nNo pude leer el anio de estos nombres.")
             print("Mandame esta lista y ajusto el patron.")
 
 
@@ -213,7 +219,7 @@ def revisar(patron_base, patron_actual):
 
 
 def calcular(patron_base, patron_actual, producto="", marca="", categoria="",
-             estado="", cadena="", por_cadena=True, min_obs=3,
+             estado="", cadena="", mes=0, por_cadena=True, min_obs=3,
              salida="resultado.csv"):
     """Corre el analisis y muestra el reporte."""
     cmd = [sys.executable, "inflacion_por_marca.py",
@@ -227,6 +233,11 @@ def calcular(patron_base, patron_actual, producto="", marca="", categoria="",
                            ("--cadena", cadena)):
         if valor and valor.strip():
             cmd += [bandera] + valor.split()
+    if mes:
+        cmd += ["--mes", str(int(mes))]
+    else:
+        print("AVISO: sin mes se mezclan todos los meses del anio y el\n"
+              "       resultado no sirve. Pon un mes en el Paso 6.\n")
     if por_cadena:
         cmd.append("--por-cadena")
 

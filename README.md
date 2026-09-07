@@ -1,3 +1,23 @@
+Adentro de cada `.rar` vienen los CSV del año, **partidos en varias piezas**.
+
+**Los nombres no son consistentes entre años.** Algunos traen el mes
+(`01-2024_01.csv` = enero 2024, pieza 1) y otros solo el número de pieza
+(`012015.csv`, `132015.csv`, donde el `01` y el `13` son piezas, no meses).
+
+Por eso el mes **no se elige por el nombre del archivo** sino con `--mes`, que
+lee la fecha de cada registro. Se apuntan todos los archivos de cada año y se
+filtra el mes por dentro:
+
+```bash
+python inflacion_por_marca.py \
+    --base   "datos/*2024*.csv" \
+    --actual "datos/*2025*.csv" \
+    --mes 8 \
+    --producto DESODORANTE
+```
+
+Sin `--mes` se mezclan los doce meses del año y el resultado no significa nada.
+
 # Calcula tu inflación
 
 Herramienta en Python para calcular la **inflación real a nivel de marca** con los
@@ -160,6 +180,7 @@ python inflacion_por_marca.py \
 | `--categoria` | Filtrar por categoría |
 | `--estado` | Filtrar por estado, ej. `COAHUILA` |
 | `--cadena` | Filtrar por cadena, ej. `WALMART HEB` |
+| `--mes` | Quedarse con un solo mes (1-12), leído de la fecha del registro |
 | `--por-cadena` | Agrega el desglose por cadena comercial |
 | `--min-obs` | Mínimo de observaciones por artículo (default 3) |
 | `--csv` | Guarda el resultado en un archivo CSV |

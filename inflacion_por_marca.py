@@ -251,6 +251,11 @@ def filtrar(df, args):
     if args.cadena and "cadena" in df.columns:
         patron = _patron_filtro(args.cadena)
         df = df[df["cadena"].str.contains(patron, na=False, regex=True)]
+    if getattr(args, "mes", None):
+        if "fecha" not in df.columns:
+            sys.exit("Pediste --mes pero el CSV no trae columna de fecha.")
+        fechas = pd.to_datetime(df["fecha"], errors="coerce")
+        df = df[fechas.dt.month == args.mes]
     return df
 
 
@@ -430,6 +435,10 @@ def main():
     p.add_argument("--cadena", nargs="+", help="Filtrar por cadena, ej. WALMART HEB")
     p.add_argument("--por-cadena", action="store_true",
                    help="Desglosar tambien por cadena comercial")
+    p.add_argument("--mes", type=int, choices=range(1, 13), metavar="1-12",
+                   help="Quedarse solo con este mes, leyendolo de la fecha de "
+                        "cada registro. Sirve cuando los archivos no vienen "
+                        "separados por mes.")
     p.add_argument("--min-obs", type=int, default=3,
                    help="Minimo de observaciones por articulo (default 3)")
     p.add_argument("--csv", help="Guardar el resultado en este archivo CSV")
