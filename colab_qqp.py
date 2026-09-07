@@ -26,7 +26,7 @@ import sys
 
 import pandas as pd
 
-VERSION = "2026-09-08.b"
+VERSION = "2026-09-08.c"
 
 RAIZ_DRIVE = "/content/drive/MyDrive"
 TEMPORAL = "_pieza"
@@ -156,19 +156,42 @@ def anios_en_datos(df):
     return {} if fechas.empty else fechas.dt.year.value_counts().to_dict()
 
 
+LOCAL = "_comprimido_local"
+
+
+def _traer_a_local(ruta_drive):
+    """Copia el comprimido de Drive al disco de la sesion antes de leerlo.
+
+    Leer directamente del Drive montado devolvia contenido equivocado: dos
+    comprimidos distintos entregaban exactamente las mismas filas. Copiarlo
+    obliga a leer el archivo completo una vez y elimina esa ambiguedad.
+    """
+    os.makedirs(LOCAL, exist_ok=True)
+    destino = os.path.join(LOCAL, os.path.basename(ruta_drive))
+    if os.path.exists(destino):
+        os.remove(destino)
+    shutil.copyfile(ruta_drive, destino)
+    return destino
+
+
 def _cosechar(carpeta, comprimido, mes, filtros, destino):
     """Recorre las piezas de un comprimido y guarda solo lo filtrado."""
-    ruta = os.path.join(carpeta, comprimido)
-    if not os.path.exists(ruta):
+    en_drive = os.path.join(carpeta, comprimido)
+    if not os.path.exists(en_drive):
         print(f"  no existe: {comprimido}")
         return None
+
+    print(f"{comprimido}: copiando desde Drive "
+          f"({os.path.getsize(en_drive)/1e6:,.1f} MB) ...")
+    ruta = _traer_a_local(en_drive)
+    print(f"  copiado: {os.path.getsize(ruta)/1e6:,.1f} MB")
 
     piezas = _piezas(ruta)
     if not piezas:
         print(f"  no pude leer el contenido de {comprimido}")
         return None
 
-    print(f"{comprimido}: {len(piezas)} piezas")
+    print(f"  {len(piezas)} piezas. Primera: {piezas[0] if piezas else '-'}")
     reunido, filas, fallos = [], 0, 0
 
     for i, pieza in enumerate(piezas, 1):
@@ -194,6 +217,8 @@ def _cosechar(carpeta, comprimido, mes, filtros, destino):
     if not reunido:
         print("  no sobrevivio ninguna fila con esos filtros")
         return None
+
+    shutil.rmtree(LOCAL, ignore_errors=True)
 
     juntos = pd.concat(reunido, ignore_index=True)
     juntos.to_csv(destino, index=False, encoding="utf-8")
