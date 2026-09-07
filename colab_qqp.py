@@ -18,7 +18,7 @@ from collections import Counter
 
 import pandas as pd
 
-VERSION = "2026-09-07.10"
+VERSION = "2026-09-07.11"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -470,11 +470,28 @@ def cosechar(carpeta, comprimido, mes, filtros, guardar_en):
         print("  no sobrevivio ninguna fila con esos filtros")
         return None
 
-    pd.concat(reunido, ignore_index=True).to_csv(guardar_en, index=False,
-                                                 encoding="utf-8")
+    juntos = pd.concat(reunido, ignore_index=True)
+    juntos.to_csv(guardar_en, index=False, encoding="utf-8")
     tam = os.path.getsize(guardar_en) / 1e6
     print(f"  guardado: {guardar_en}  ({filas:,} filas, {tam:,.1f} MB)")
+
+    # El anio se toma de la fecha de los registros, no del nombre del archivo:
+    # es el unico dato que no depende de como se llamen los archivos.
+    anios = anios_en_datos(juntos)
+    if anios:
+        detalle = ", ".join(f"{a} ({n:,} filas)" for a, n in sorted(anios.items()))
+        print(f"  anios que traen los datos: {detalle}")
     return guardar_en
+
+
+def anios_en_datos(df):
+    """Anios presentes en la columna de fecha, con cuantas filas tiene cada uno."""
+    if "fecha" not in df.columns:
+        return {}
+    fechas = pd.to_datetime(df["fecha"], errors="coerce").dropna()
+    if fechas.empty:
+        return {}
+    return fechas.dt.year.value_counts().to_dict()
 
 
 def analizar(carpeta, comprimido_base, comprimido_actual, mes, filtros,
@@ -500,6 +517,16 @@ def analizar(carpeta, comprimido_base, comprimido_actual, mes, filtros,
     if not actual:
         print("\nNo se pudo preparar el periodo ACTUAL.")
         return False
+
+    ab = anios_en_datos(pd.read_csv(base))
+    aa = anios_en_datos(pd.read_csv(actual))
+    if ab and aa:
+        pb, pa = max(ab, key=ab.get), max(aa, key=aa.get)
+        print(f"\nPeriodo BASE: {pb}     Periodo ACTUAL: {pa}")
+        if pb == pa:
+            print("\nLOS DOS SON EL MISMO ANIO. La comparacion daria cero.")
+            print("Elige en el Paso 4 dos comprimidos con anios distintos.")
+            return False
 
     print()
     cmd = [sys.executable, "inflacion_por_marca.py",
