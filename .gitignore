@@ -1,5 +1,6 @@
-# Datos crudos de QQP (son cientos de MB, no van al repo)
+# Datos crudos de QQP (cientos de MB, nunca van al repo)
 *.csv
+datos/
 !ejemplos/*.csv
 
 # Python

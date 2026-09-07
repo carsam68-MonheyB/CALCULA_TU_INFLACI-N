@@ -28,8 +28,51 @@ Requiere Python 3.8 o superior.
 ## De dónde bajar los datos
 
 En [datos.gob.mx](https://datos.gob.mx) busca **"Programa Quien es quien en los precios"**.
-Hay un CSV por mes. Baja el mismo mes de cada año que quieras comparar (por ejemplo
-agosto 2025 y agosto 2026) para no mezclar estacionalidad.
+Los datos vienen comprimidos, normalmente un archivo por año (`QQP_2025.rar`).
+
+### Preparar los archivos
+
+1. **Descomprime** cada `.rar` con WinRAR o 7-Zip. Adentro vienen los CSV.
+2. **Crea una carpeta `datos/`** dentro del proyecto y mete ahí los CSV.
+3. Deja los nombres con el año visible, para poder separar periodos con comodines.
+
+```
+CALCULA_TU_INFLACI-N/
+├── inflacion_por_marca.py
+├── datos/                    ← tus CSV descomprimidos (NO se suben a GitHub)
+│   ├── QQP_2024.csv
+│   └── QQP_2025.csv
+└── ejemplos/                 ← datos de prueba, estos sí vienen en el repo
+```
+
+La carpeta `datos/` está en el `.gitignore`, así que git nunca va a intentar
+subir esos archivos. **No los subas a GitHub**: pesan cientos de MB y el límite
+por archivo son 100 MB.
+
+### Sobre el tamaño de los archivos
+
+Un año completo de QQP puede traer **más de 20 millones de filas**. Cargarlo
+entero en memoria ocuparía unas 5 veces el tamaño del CSV — un archivo de 2 GB
+pediría cerca de 10 GB de RAM.
+
+Por eso el script **lee por bloques y filtra sobre la marcha**: solo guarda en
+memoria las filas que pasan tus filtros. Aun así, **usa siempre al menos un
+filtro** (`--producto`, `--categoria`, `--marca`...). Sin filtros no hay nada
+que descartar y el archivo termina completo en memoria.
+
+```bash
+# bien: solo se guardan los desodorantes
+python inflacion_por_marca.py --base "datos/QQP_2024.csv" \
+    --actual "datos/QQP_2025.csv" --producto DESODORANTE
+
+# mal: sin filtro, intenta guardar los 20 millones de filas
+python inflacion_por_marca.py --base "datos/QQP_2024.csv" \
+    --actual "datos/QQP_2025.csv"
+```
+
+Si aun así te quedas sin memoria, baja el tamaño de bloque con `--bloque 100000`.
+
+Compara siempre el mismo mes o periodo de cada año para no mezclar estacionalidad.
 
 ## Uso
 
@@ -90,6 +133,7 @@ python inflacion_por_marca.py \
 | `--por-cadena` | Agrega el desglose por cadena comercial |
 | `--min-obs` | Mínimo de observaciones por artículo (default 3) |
 | `--csv` | Guarda el resultado en un archivo CSV |
+| `--bloque` | Filas por bloque de lectura (default 500,000). Bájalo si te quedas sin memoria |
 
 Los filtros son por coincidencia parcial y no distinguen acentos ni mayúsculas.
 

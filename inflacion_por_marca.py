@@ -85,30 +85,63 @@ def sin_acentos(texto):
     return "".join(c for c in nfkd if not unicodedata.combining(c)).upper().strip()
 
 
-def leer_csv(patron):
-    """Lee uno o varios CSV de QQP. Prueba varias codificaciones."""
+class ColumnasFaltantes(Exception):
+    """El CSV no trae las columnas minimas de QQP."""
+
+
+# Filas por bloque. Un CSV anual de QQP puede traer 20+ millones de filas;
+# leerlo entero ocupa unas 5 veces su tamano en RAM y tumba la maquina.
+# Leyendo por bloques y filtrando cada bloque solo se guarda lo que interesa.
+TAM_BLOQUE = 500_000
+
+
+def leer_csv(patron, args=None):
+    """Lee uno o varios CSV de QQP por bloques, normalizando y filtrando sobre
+    la marcha para no cargar el archivo completo en memoria."""
     rutas = sorted(glob.glob(patron))
     if not rutas:
         sys.exit(f"No encontre archivos que coincidan con: {patron}")
 
     marcos = []
     for ruta in rutas:
-        df = None
+        piezas = None
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
-                df = pd.read_csv(ruta, encoding=enc, low_memory=False,
-                                 on_bad_lines="skip")
+                piezas, filas, guardadas = [], 0, 0
+                lector = pd.read_csv(ruta, encoding=enc, low_memory=False,
+                                     on_bad_lines="skip", chunksize=TAM_BLOQUE)
+                for bloque in lector:
+                    filas += len(bloque)
+                    bloque = normalizar(bloque)
+                    if args is not None:
+                        bloque = filtrar(bloque, args)
+                    if not bloque.empty:
+                        guardadas += len(bloque)
+                        piezas.append(bloque)
+                    print(f"\r  {ruta}: {filas:,} filas leidas, "
+                          f"{guardadas:,} conservadas", end="", file=sys.stderr)
                 break
-            except (UnicodeDecodeError, pd.errors.ParserError):
+            except UnicodeDecodeError:
+                piezas = None
                 continue
-        if df is None:
-            print(f"  ! No pude leer {ruta}, lo salto", file=sys.stderr)
+            except ColumnasFaltantes as e:
+                print(file=sys.stderr)
+                sys.exit(f"{ruta}: {e}")
+            except pd.errors.ParserError:
+                piezas = None
+                continue
+
+        if piezas is None:
+            print(f"\n  ! No pude leer {ruta}, lo salto", file=sys.stderr)
             continue
-        print(f"  leido {ruta}: {len(df):,} registros", file=sys.stderr)
-        marcos.append(df)
+
+        print(file=sys.stderr)
+        if piezas:
+            marcos.append(pd.concat(piezas, ignore_index=True))
 
     if not marcos:
-        sys.exit("No pude leer ningun archivo.")
+        sys.exit("No pude leer ningun archivo, o los filtros no dejaron "
+                 "ninguna fila. Prueba terminos mas amplios.")
     return pd.concat(marcos, ignore_index=True)
 
 
@@ -124,8 +157,9 @@ def normalizar(df):
 
     faltan = {"producto", "marca", "precio"} - set(df.columns)
     if faltan:
-        sys.exit(f"Al CSV le faltan columnas indispensables: {faltan}\n"
-                 f"Columnas encontradas: {list(df.columns)[:15]}")
+        raise ColumnasFaltantes(
+            f"Al CSV le faltan columnas indispensables: {faltan}\n"
+            f"Columnas encontradas: {list(df.columns)[:15]}")
 
     for col in ("producto", "marca", "presentacion", "cadena",
                 "estado", "municipio", "categoria"):
@@ -366,6 +400,7 @@ def reporte_reduflacion(comp):
 # --------------------------------------------------------------------------
 
 def main():
+    global TAM_BLOQUE
     p = argparse.ArgumentParser(
         description="Inflacion por marca con datos abiertos de Profeco (QQP).",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -383,15 +418,25 @@ def main():
     p.add_argument("--min-obs", type=int, default=3,
                    help="Minimo de observaciones por articulo (default 3)")
     p.add_argument("--csv", help="Guardar el resultado en este archivo CSV")
+    p.add_argument("--bloque", type=int, default=TAM_BLOQUE,
+                   help=f"Filas por bloque de lectura (default {TAM_BLOQUE:,}). "
+                        "Bajalo si te quedas sin memoria.")
     args = p.parse_args()
 
-    print("Leyendo periodo BASE...", file=sys.stderr)
-    base = normalizar(leer_csv(args.base))
-    print("Leyendo periodo ACTUAL...", file=sys.stderr)
-    actual = normalizar(leer_csv(args.actual))
+    TAM_BLOQUE = args.bloque
 
-    base = filtrar(base, args)
-    actual = filtrar(actual, args)
+    if not any((args.producto, args.marca, args.categoria,
+                args.estado, args.cadena)):
+        print("AVISO: no pusiste ningun filtro, asi que se va a conservar el\n"
+              "       archivo completo en memoria. Con los CSV anuales de QQP\n"
+              "       eso puede tumbar la maquina. Usa --producto o --categoria\n"
+              "       para quedarte solo con lo que te interesa.\n",
+              file=sys.stderr)
+
+    print("Leyendo periodo BASE...", file=sys.stderr)
+    base = leer_csv(args.base, args)
+    print("Leyendo periodo ACTUAL...", file=sys.stderr)
+    actual = leer_csv(args.actual, args)
 
     print(f"\nTras filtros: {len(base):,} registros base, "
           f"{len(actual):,} registros actuales", file=sys.stderr)
