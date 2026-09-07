@@ -16,7 +16,7 @@ import subprocess
 import sys
 from collections import Counter
 
-VERSION = "2026-09-07.4"
+VERSION = "2026-09-07.5"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -88,23 +88,38 @@ def _aplanar():
     return movidos
 
 
+def anio_de(nombre):
+    """Saca el anio del nombre de un archivo de QQP.
+
+    Los nombres traen numeros de pieza pegados al anio ("192015.csv" es la
+    pieza 19 de 2015), asi que una busqueda simple de cuatro digitos puede
+    leer "1920" donde en realidad dice pieza 19 + anio 2015. Se toman todas
+    las secuencias de cuatro digitos, se descartan las que no son un anio
+    plausible y se conserva la ultima: el anio va al final del nombre.
+    """
+    base = os.path.basename(nombre)
+    candidatos = [int(base[i:i + 4]) for i in range(len(base) - 3)
+                  if base[i:i + 4].isdigit()]
+    plausibles = [a for a in candidatos if 2000 <= a <= 2035]
+    return str(plausibles[-1]) if plausibles else None
+
+
 def anios_disponibles():
     """Cuenta cuantos archivos hay de cada anio.
 
     QQP no nombra igual todos los anios: unos traen "01-2024_01.csv" (mes,
     anio, pieza) y otros "012015.csv" (pieza y anio, sin mes). Lo unico
-    confiable en el nombre es el anio de cuatro digitos; el mes se filtra
-    despues leyendo la fecha de cada registro.
+    confiable en el nombre es el anio; el mes se filtra despues leyendo la
+    fecha de cada registro.
     """
     cuenta = Counter()
     if not os.path.isdir(DATOS):
         return cuenta
     for f in os.listdir(DATOS):
-        if not f.lower().endswith(".csv"):
-            continue
-        for anio in re.findall(r"(19|20)(\d{2})", f):
-            cuenta["".join(anio)] += 1
-            break
+        if f.lower().endswith(".csv"):
+            a = anio_de(f)
+            if a:
+                cuenta[a] += 1
     return cuenta
 
 
@@ -118,10 +133,46 @@ def _sugerir_patrones(cuenta):
 def _anios_de(nombres):
     c = Counter()
     for f in nombres:
-        for a in re.findall(r"(19|20)(\d{2})", f):
-            c["".join(a)] += 1
-            break
+        a = anio_de(f)
+        if a:
+            c[a] += 1
     return c
+
+
+def inspeccionar(carpeta, comprimidos="", cuantos=6):
+    """Muestra que archivos trae cada comprimido, SIN extraerlo.
+
+    Es la unica forma de saber si un .rar corresponde a su nombre antes de
+    gastar minutos extrayendolo.
+    """
+    if comprimidos.strip():
+        nombres = [n.strip() for n in comprimidos.split(",") if n.strip()]
+    else:
+        nombres = sorted(os.path.basename(f) for f in
+                         glob.glob(os.path.join(carpeta, "*.rar")) +
+                         glob.glob(os.path.join(carpeta, "*.zip")))
+
+    for nombre in nombres:
+        origen = os.path.join(carpeta, nombre)
+        print(f"--- {nombre}")
+        if not os.path.exists(origen):
+            print("    NO ENCONTRADO\n")
+            continue
+        r = subprocess.run(["lsar", origen], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"    no pude leerlo: {(r.stderr or r.stdout)[:200]}\n")
+            continue
+        lineas = [l.strip() for l in r.stdout.splitlines()[1:] if l.strip()]
+        csvs = [l for l in lineas if l.lower().endswith(".csv")]
+        for l in csvs[:cuantos]:
+            print("   ", l)
+        if len(csvs) > cuantos:
+            print(f"    ... y {len(csvs)-cuantos} archivos mas")
+        anios = _anios_de(csvs)
+        if anios:
+            print("    anios adentro:",
+                  ", ".join(f"{a} ({anios[a]})" for a in sorted(anios)))
+        print()
 
 
 def limpiar():
@@ -133,7 +184,7 @@ def limpiar():
     print("Carpeta datos/ vaciada.\n")
 
 
-def extraer(carpeta, comprimidos, limpiar_antes=False):
+def extraer(carpeta, comprimidos, limpiar_antes=True):
     """Extrae los comprimidos indicados y deja todos los CSV en datos/.
 
     Reporta que anios aporto cada comprimido, porque el nombre del archivo no
