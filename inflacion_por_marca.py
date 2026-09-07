@@ -65,16 +65,22 @@ except ImportError:
 # Lectura y normalizacion
 # --------------------------------------------------------------------------
 
+# Nombres de columna que puede traer QQP para cada campo que usamos.
+# La comparacion ignora mayusculas, acentos, guiones bajos y espacios, asi que
+# "fecha_registro", "FECHAREGISTRO" y "Fecha Registro" cuentan como el mismo.
 COLUMNAS = {
-    "producto": ["PRODUCTO", "producto"],
-    "presentacion": ["PRESENTACION", "presentacion", "PRESENTACIÓN"],
-    "marca": ["MARCA", "marca"],
-    "categoria": ["CATEGORIA", "categoria", "CATEGORÍA"],
-    "precio": ["PRECIO", "precio"],
-    "fecha": ["FECHAREGISTRO", "fecharegistro", "FECHA_REGISTRO", "FECHA"],
-    "cadena": ["CADENACOMERCIAL", "cadenacomercial", "CADENA_COMERCIAL"],
-    "estado": ["ESTADO", "estado"],
-    "municipio": ["MUNICIPIO", "municipio"],
+    "producto": ["PRODUCTO"],
+    "presentacion": ["PRESENTACION"],
+    "marca": ["MARCA"],
+    "categoria": ["CATEGORIA"],
+    "catalogo": ["CATALOGO"],
+    "precio": ["PRECIO"],
+    "fecha": ["FECHAREGISTRO", "FECHA"],
+    "cadena": ["CADENACOMERCIAL", "CADENA"],
+    "giro": ["GIRO"],
+    "tienda": ["NOMBRECOMERCIAL"],
+    "estado": ["ESTADO"],
+    "municipio": ["MUNICIPIO"],
 }
 
 
@@ -93,6 +99,14 @@ class ColumnasFaltantes(Exception):
 # leerlo entero ocupa unas 5 veces su tamano en RAM y tumba la maquina.
 # Leyendo por bloques y filtrando cada bloque solo se guarda lo que interesa.
 TAM_BLOQUE = 500_000
+
+
+def clave_columna(nombre):
+    """Reduce el nombre de una columna a solo letras y numeros en mayusculas,
+    sin acentos. Los CSV de QQP han cambiado de formato entre anios
+    ('cadena_comercial' en unos, 'CADENACOMERCIAL' en otros) y asi todos
+    quedan reconocidos igual."""
+    return re.sub(r"[^A-Z0-9]", "", sin_acentos(str(nombre)))
 
 
 def leer_csv(patron, args=None):
@@ -148,9 +162,10 @@ def leer_csv(patron, args=None):
 def normalizar(df):
     """Deja los nombres de columna estandarizados y limpia los textos."""
     mapa = {}
-    for destino, posibles in COLUMNAS.items():
-        for col in posibles:
-            if col in df.columns:
+    for col in df.columns:
+        clave = clave_columna(col)
+        for destino, posibles in COLUMNAS.items():
+            if clave in posibles and destino not in mapa.values():
                 mapa[col] = destino
                 break
     df = df.rename(columns=mapa)
