@@ -18,13 +18,23 @@ from collections import Counter
 
 import pandas as pd
 
-VERSION = "2026-09-07.7"
+VERSION = "2026-09-07.8"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
 
 
 def preparar():
+    # inflacion_por_marca puede haber quedado importado de una ejecucion
+    # anterior; sin recargarlo, el codigo nuevo que se acaba de descargar no
+    # se usa y aparecen errores de funciones que "no existen".
+    import importlib
+    try:
+        import inflacion_por_marca
+        importlib.reload(inflacion_por_marca)
+    except Exception:
+        pass
+
     os.makedirs(DATOS, exist_ok=True)
     hay_unar = shutil.which("unar") is not None
     print(f"Listo.  (version del codigo: {VERSION})")
@@ -372,9 +382,18 @@ def _piezas_de(ruta_comprimido):
             if l.strip().lower().endswith(".csv")]
 
 
+def _importar_ipm():
+    """Importa inflacion_por_marca recargandolo si ya estaba en memoria."""
+    import importlib
+    import inflacion_por_marca as ipm
+    if not hasattr(ipm, "detectar_separador"):
+        importlib.reload(ipm)
+    return ipm
+
+
 def _filtrar_pieza(ruta_csv, mes, filtros, tam_bloque=400_000):
     """Lee una pieza por bloques y devuelve solo las filas que interesan."""
-    import inflacion_por_marca as ipm
+    ipm = _importar_ipm()
 
     class Args:
         pass
@@ -503,7 +522,7 @@ def ver_una_pieza(carpeta, comprimido, cual=1):
     Sirve para ver el formato real del archivo (separador, encabezado) cuando
     la lectura falla.
     """
-    import inflacion_por_marca as ipm
+    ipm = _importar_ipm()
 
     origen = os.path.join(carpeta, comprimido)
     if not os.path.exists(origen):
@@ -551,3 +570,46 @@ def ver_una_pieza(carpeta, comprimido, cual=1):
         print("\npandas no pudo leerlo:", e)
     finally:
         shutil.rmtree(TEMPORAL, ignore_errors=True)
+
+
+def inventario(carpeta):
+    """Tabla de: comprimido -> anio que realmente trae adentro.
+
+    El nombre del .rar no siempre corresponde a su contenido, y descubrirlo
+    hasta el final cuesta mucho tiempo. lsar lee la lista de archivos sin
+    descomprimir, asi que revisar todos los comprimidos toma segundos.
+    """
+    archivos = sorted(glob.glob(os.path.join(carpeta, "*.rar")) +
+                      glob.glob(os.path.join(carpeta, "*.zip")))
+    if not archivos:
+        print("No hay .rar ni .zip en", carpeta)
+        return {}
+
+    print(f"{'COMPRIMIDO':<22} {'AÑO REAL':>10} {'PIEZAS':>8}   {'CUADRA?'}")
+    print("-" * 62)
+    mapa = {}
+    for ruta in archivos:
+        nombre = os.path.basename(ruta)
+        piezas = _piezas_de(ruta)
+        if not piezas:
+            print(f"{nombre:<22} {'?':>10} {'?':>8}   no pude leerlo")
+            continue
+        anios = _anios_de(piezas)
+        if not anios:
+            print(f"{nombre:<22} {'?':>10} {len(piezas):>8}   sin anio en los nombres")
+            continue
+        real = anios.most_common(1)[0][0]
+        cuadra = "si" if real in nombre else f"NO (se llama {nombre.split('.')[0]})"
+        print(f"{nombre:<22} {real:>10} {len(piezas):>8}   {cuadra}")
+        mapa[nombre] = real
+
+    por_anio = {}
+    for nombre, anio in mapa.items():
+        por_anio.setdefault(anio, []).append(nombre)
+    print("\nPara comparar dos anios, usa estos comprimidos:")
+    for anio in sorted(por_anio):
+        print(f"   {anio}: {', '.join(sorted(por_anio[anio]))}")
+    if len(por_anio) < 2:
+        print("\nOJO: solo hay un anio disponible. Se necesitan dos para")
+        print("     medir inflacion. Revisa la descarga de los demas archivos.")
+    return mapa
