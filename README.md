@@ -37,9 +37,24 @@ Requiere Python 3.8 o superior.
 En [datos.gob.mx](https://datos.gob.mx) busca **"Programa Quien es quien en los precios"**.
 Los datos vienen comprimidos, normalmente un archivo por año (`QQP_2025.rar`).
 
-Adentro de cada `.rar` viene **un CSV por mes**. Para comparar dos periodos
-necesitas dos archivos: el **mismo mes** de dos años distintos (por ejemplo
-agosto 2024 y agosto 2025), para no mezclar efectos de temporada.
+Adentro de cada `.rar` vienen los CSV **por mes, y cada mes partido en varias
+piezas**, con el formato `MM-AAAA_pieza.csv`:
+
+```
+01-2024_01.csv     enero 2024, parte 1
+01-2024_02.csv     enero 2024, parte 2
+```
+
+Para comparar dos periodos necesitas **todas las piezas de un mes de cada año**,
+usando el **mismo mes** en ambos para no mezclar efectos de temporada. El comodín
+`*` junta las piezas automáticamente:
+
+```bash
+python inflacion_por_marca.py \
+    --base   "datos/01-2024_*.csv" \
+    --actual "datos/01-2025_*.csv" \
+    --producto DESODORANTE
+```
 
 ### Preparar los archivos
 
