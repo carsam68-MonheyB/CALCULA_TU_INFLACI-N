@@ -17,7 +17,14 @@ puede cruzar dos periodos y ver qué subió de verdad — y, sobre todo, detecta
 | Detección de reduflación | Compara etiqueta contra contenido: si el empaque encogió, aparece la brecha |
 | Desglose por cadena comercial | Qué tienda subió más el mismo producto |
 
-## Instalación
+## Uso sin instalar nada (recomendado)
+
+Si no usas Python, abre el cuaderno en Google Colab: corre en el navegador, subes
+tus CSV y le das ejecutar. No hay que instalar nada.
+
+[![Abrir en Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/carsam68-MonheyB/CALCULA_TU_INFLACI-N/blob/main/Calcula_tu_inflacion_COLAB.ipynb)
+
+## Instalación local (si prefieres tu computadora)
 
 ```bash
 pip install -r requirements.txt
@@ -30,9 +37,13 @@ Requiere Python 3.8 o superior.
 En [datos.gob.mx](https://datos.gob.mx) busca **"Programa Quien es quien en los precios"**.
 Los datos vienen comprimidos, normalmente un archivo por año (`QQP_2025.rar`).
 
+Adentro de cada `.rar` viene **un CSV por mes**. Para comparar dos periodos
+necesitas dos archivos: el **mismo mes** de dos años distintos (por ejemplo
+agosto 2024 y agosto 2025), para no mezclar efectos de temporada.
+
 ### Preparar los archivos
 
-1. **Descomprime** cada `.rar` con WinRAR o 7-Zip. Adentro vienen los CSV.
+1. **Descomprime** cada `.rar` con WinRAR o 7-Zip. Adentro vienen los CSV mensuales.
 2. **Crea una carpeta `datos/`** dentro del proyecto y mete ahí los CSV.
 3. Deja los nombres con el año visible, para poder separar periodos con comodines.
 
