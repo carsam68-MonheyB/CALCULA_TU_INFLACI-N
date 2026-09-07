@@ -18,7 +18,7 @@ from collections import Counter
 
 import pandas as pd
 
-VERSION = "2026-09-07.8"
+VERSION = "2026-09-07.9"
 
 DATOS = "datos"
 RAIZ_DRIVE = "/content/drive/MyDrive"
@@ -386,7 +386,7 @@ def _importar_ipm():
     """Importa inflacion_por_marca recargandolo si ya estaba en memoria."""
     import importlib
     import inflacion_por_marca as ipm
-    if not hasattr(ipm, "detectar_separador"):
+    if not hasattr(ipm, "opciones_lectura"):
         importlib.reload(ipm)
     return ipm
 
@@ -407,10 +407,10 @@ def _filtrar_pieza(ruta_csv, mes, filtros, tam_bloque=400_000):
     for enc in ("utf-8", "latin-1", "cp1252"):
         try:
             trozos = []
-            sep = ipm.detectar_separador(ruta_csv, enc)
-            for bloque in pd.read_csv(ruta_csv, encoding=enc, sep=sep,
+            for bloque in pd.read_csv(ruta_csv, encoding=enc,
                                       low_memory=False, on_bad_lines="skip",
-                                      chunksize=tam_bloque):
+                                      chunksize=tam_bloque,
+                                      **ipm.opciones_lectura(ruta_csv, enc)):
                 bloque = ipm.normalizar(bloque)
                 bloque = ipm.filtrar(bloque, args)
                 if not bloque.empty:
@@ -553,7 +553,11 @@ def ver_una_pieza(carpeta, comprimido, cual=1):
     lineas, enc = ipm.primeras_lineas(ruta, 3)
     print(f"codificacion que funciono: {enc}")
     if enc:
-        print(f"separador detectado: {ipm.detectar_separador(ruta, enc)!r}\n")
+        op = ipm.opciones_lectura(ruta, enc)
+        print(f"separador detectado: {op['sep']!r}")
+        print("encabezado:", "no trae, se ponen los nombres del diccionario"
+              if "names" in op else "si trae")
+        print()
     print("PRIMERAS LINEAS TAL COMO VIENEN:")
     print("-" * 70)
     for i, l in enumerate(lineas, 1):
@@ -562,7 +566,7 @@ def ver_una_pieza(carpeta, comprimido, cual=1):
 
     try:
         df = pd.read_csv(ruta, nrows=3, encoding=enc,
-                         sep=ipm.detectar_separador(ruta, enc))
+                         **ipm.opciones_lectura(ruta, enc))
         print("\nColumnas que leyo pandas:")
         for c in list(df.columns)[:20]:
             print("   ", c)

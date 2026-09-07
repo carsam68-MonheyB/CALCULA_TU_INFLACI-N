@@ -97,6 +97,15 @@ class ColumnasFaltantes(Exception):
 
 SEPARADORES = [",", "|", ";", "\t"]
 
+# Orden de columnas del dataset de QQP, segun su diccionario de datos.
+# Muchas piezas vienen SIN fila de encabezado: sin esta lista, pandas toma el
+# primer registro como nombres de columna y luego parece que faltan columnas.
+COLUMNAS_QQP = [
+    "producto", "presentacion", "marca", "categoria", "catalogo", "precio",
+    "fecha_registro", "cadena_comercial", "giro", "nombre_comercial",
+    "direccion", "estado", "municipio", "latitud", "longitud",
+]
+
 
 def detectar_separador(ruta, encoding):
     """Adivina el separador contando cual aparece mas en el encabezado.
@@ -113,6 +122,33 @@ def detectar_separador(ruta, encoding):
     cuentas = {sep: linea.count(sep) for sep in SEPARADORES}
     mejor = max(cuentas, key=cuentas.get)
     return mejor if cuentas[mejor] >= 3 else ","
+
+
+def tiene_encabezado(ruta, encoding, sep):
+    """Decide si la primera linea son nombres de columna o ya son datos."""
+    try:
+        with open(ruta, encoding=encoding, errors="replace") as f:
+            linea = f.readline()
+    except OSError:
+        return True
+    conocidas = {c for lista in COLUMNAS.values() for c in lista}
+    campos = [clave_columna(c) for c in linea.rstrip("\n").split(sep)]
+    return sum(1 for c in campos if c in conocidas) >= 3
+
+
+def opciones_lectura(ruta, encoding):
+    """Separador y nombres de columna a usar para leer este archivo."""
+    sep = detectar_separador(ruta, encoding)
+    if tiene_encabezado(ruta, encoding, sep):
+        return {"sep": sep}
+    try:
+        with open(ruta, encoding=encoding, errors="replace") as f:
+            n = len(f.readline().rstrip("\n").split(sep))
+    except OSError:
+        n = len(COLUMNAS_QQP)
+    nombres = list(COLUMNAS_QQP[:n])
+    nombres += [f"extra_{i}" for i in range(len(nombres), n)]
+    return {"sep": sep, "header": None, "names": nombres}
 
 
 def primeras_lineas(ruta, cuantas=3):
@@ -153,10 +189,9 @@ def leer_csv(patron, args=None):
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 piezas, filas, guardadas = [], 0, 0
-                sep = detectar_separador(ruta, enc)
-                lector = pd.read_csv(ruta, encoding=enc, sep=sep,
-                                     low_memory=False, on_bad_lines="skip",
-                                     chunksize=TAM_BLOQUE)
+                lector = pd.read_csv(ruta, encoding=enc, low_memory=False,
+                                     on_bad_lines="skip", chunksize=TAM_BLOQUE,
+                                     **opciones_lectura(ruta, enc))
                 for bloque in lector:
                     filas += len(bloque)
                     bloque = normalizar(bloque)
