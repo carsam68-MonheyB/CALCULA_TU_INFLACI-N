@@ -242,6 +242,27 @@ def leer_csv(patron, args=None):
     return pd.concat(marcos, ignore_index=True)
 
 
+# Columnas que el analisis usa. El resto (direccion, nombre del local,
+# coordenadas) son textos largos que multiplican la memoria sin aportar nada.
+COLUMNAS_UTILES = ["producto", "presentacion", "marca", "categoria",
+                   "precio", "fecha", "cadena", "estado", "municipio"]
+
+# Columnas de texto que se guardan como "categoria": los mismos valores se
+# repiten millones de veces, y guardarlos una sola vez usa unas 25 veces menos
+# memoria que repetir la cadena en cada fila.
+COLUMNAS_CATEGORICAS = ["producto", "presentacion", "marca", "categoria",
+                        "cadena", "estado", "municipio"]
+
+
+def compactar(df):
+    """Deja solo las columnas utiles y guarda los textos como categorias."""
+    df = df[[c for c in COLUMNAS_UTILES if c in df.columns]].copy()
+    for col in COLUMNAS_CATEGORICAS:
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+    return df
+
+
 def normalizar(df):
     """Deja los nombres de columna estandarizados y limpia los textos."""
     mapa = {}
@@ -345,7 +366,7 @@ def filtrar(df, args):
 def resumir(df, llaves, min_obs):
     """Mediana de precio por llave. La mediana aguanta mejor los outliers
     de captura que el promedio."""
-    g = df.groupby(llaves).agg(
+    g = df.groupby(llaves, observed=True).agg(
         precio=("precio", "median"),
         n=("precio", "size"),
     ).reset_index()
@@ -446,7 +467,7 @@ def detectar_reduflacion(base, actual, min_obs):
         if d.empty:
             continue
         d["precio_unit"] = d["precio"] / d["contenido"] * 100
-        g = d.groupby(["producto", "marca"]).agg(
+        g = d.groupby(["producto", "marca"], observed=True).agg(
             precio_unit=("precio_unit", "median"),
             contenido_tipico=("contenido", "median"),
             precio_etiqueta=("precio", "median"),

@@ -26,7 +26,7 @@ import sys
 
 import pandas as pd
 
-VERSION = "2026-09-08.c"
+VERSION = "2026-09-08.d"
 
 RAIZ_DRIVE = "/content/drive/MyDrive"
 TEMPORAL = "_pieza"
@@ -140,7 +140,7 @@ def _filtrar(ruta_csv, mes, filtros):
                                       **ipm.opciones_lectura(ruta_csv, enc)):
                 bloque = ipm.filtrar(ipm.normalizar(bloque), args)
                 if not bloque.empty:
-                    trozos.append(bloque)
+                    trozos.append(ipm.compactar(bloque))
             return pd.concat(trozos, ignore_index=True) if trozos else pd.DataFrame()
         except UnicodeDecodeError:
             continue
@@ -239,9 +239,10 @@ def analizar(carpeta, comprimido_base, comprimido_actual, mes, filtros,
     if not mes:
         print("Falta el MES. Sin el se mezclan los doce meses del anio.")
         return False
-    if not any(v.strip() for v in filtros.values() if v):
-        print("Falta un filtro. Escribe al menos un producto o una categoria.")
-        return False
+    sin_filtro = not any(v.strip() for v in filtros.values() if v)
+    if sin_filtro:
+        print("Sin filtro de producto: se analizara la CANASTA COMPLETA.")
+        print("Tarda mas y el resultado trae miles de renglones.\n")
 
     print(f"Buscando {MESES[mes]} en cada comprimido. Esto tarda varios minutos.\n")
 
